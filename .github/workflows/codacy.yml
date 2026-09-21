@@ -1,0 +1,57 @@
+name: Codacy CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  codacy:
+    runs-on: ubuntu-24.04
+
+    services:
+      mariadb:
+        image: mariadb:12.0.2
+        env:
+          MARIADB_ROOT_PASSWORD: uvlhub_root_password
+          MARIADB_DATABASE: uvlhubdb_test
+          MARIADB_USER: uvlhub_user
+          MARIADB_PASSWORD: uvlhub_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -u root -p$MARIADB_ROOT_PASSWORD"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install project and coverage uploader
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ./rosemary
+          pip install codacy-coverage
+
+      - name: Test and send coverage to Codacy
+        env:
+          FLASK_ENV: testing
+          MARIADB_HOSTNAME: 127.0.0.1
+          MARIADB_PORT: 3306
+          MARIADB_TEST_DATABASE: uvlhubdb_test
+          MARIADB_USER: uvlhub_user
+          MARIADB_PASSWORD: uvlhub_password
+          CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        run: |
+          coverage run -m pytest app/features/ --ignore-glob='*selenium*'
+          coverage xml
+          python-codacy-coverage -r coverage.xml
